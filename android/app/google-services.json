@@ -1,0 +1,99 @@
+{
+  "project_info": {
+    "project_number": "512973562686",
+    "firebase_url": "https://capital-taxi-ed8f0-default-rtdb.firebaseio.com",
+    "project_id": "capital-taxi-ed8f0",
+    "storage_bucket": "capital-taxi-ed8f0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:512973562686:android:86a9b963a69d44768c426f",
+        "android_client_info": {
+          "package_name": "com.android.application"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "512973562686-svb9r20l8hn66s3mqkojmcobovn6dq2m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDk56vt5FPOa-Pas3Ylwjcfka0G5CG8u1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "512973562686-svb9r20l8hn66s3mqkojmcobovn6dq2m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "512973562686-f6or37iqr4ct65ntrclrfbkq176u17el.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.capitaltaxi"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:512973562686:android:a0c7678ebe69e9618c426f",
+        "android_client_info": {
+          "package_name": "com.example.capital_taxi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "512973562686-5do73051i54abmk6vrkf2c9lc6lg7f1q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.capital_taxi",
+            "certificate_hash": "c48be44abfb744a40ee3598d91695b93dc915079"
+          }
+        },
+        {
+          "client_id": "512973562686-b8mddiggmtslmmqje4gib1ift5gearnf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.capital_taxi",
+            "certificate_hash": "37391a4db55732610f0f0612701a71a32b470988"
+          }
+        },
+        {
+          "client_id": "512973562686-svb9r20l8hn66s3mqkojmcobovn6dq2m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDk56vt5FPOa-Pas3Ylwjcfka0G5CG8u1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "512973562686-svb9r20l8hn66s3mqkojmcobovn6dq2m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "512973562686-f6or37iqr4ct65ntrclrfbkq176u17el.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.capitaltaxi"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
