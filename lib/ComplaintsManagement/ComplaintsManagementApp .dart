@@ -94,7 +94,7 @@ class _ProfessionalComplaintsDashboardState
         ),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
-      floatingActionButton: _buildFloatingActionButton(),
+ 
     );
   }
 
@@ -277,17 +277,7 @@ class _ProfessionalComplaintsDashboardState
     );
   }
 
-  Widget _buildFloatingActionButton() {
-    return FloatingActionButton(
-      backgroundColor: primaryColor,
-      elevation: 5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: const Icon(Icons.add, color: Colors.white, size: 28),
-      onPressed: () => _showAddComplaintDialog(),
-    );
-  }
+ 
 
   void _showAdvancedFilterDialog() {
   showModalBottomSheet(
@@ -472,78 +462,7 @@ class _ProfessionalComplaintsDashboardState
     );
   }
 
-  void _showAddComplaintDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15)),
-        title: Text('إضافة شكوى جديدة', style: TextStyle(color: primaryColor)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'عنوان الشكوى',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'وصف الشكوى',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 15),
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(
-                  labelText: 'نوع الشكوى',
-                  border: OutlineInputBorder(),
-                ),
-                items: categories.where((c) => c.id != 'all').map((category) {
-                  return DropdownMenuItem(
-                    value: category.id,
-                    child: Text(category.name),
-                  );
-                }).toList(),
-                onChanged: (value) {},
-              ),
-              const SizedBox(height: 15),
-              DropdownButtonFormField<Priority>(
-                decoration: InputDecoration(
-                  labelText: 'الأولوية',
-                  border: OutlineInputBorder(),
-                ),
-                items: Priority.values.map((priority) {
-                  return DropdownMenuItem(
-                    value: priority,
-                    child: Text(_getPriorityText(priority)),
-                  );
-                }).toList(),
-                onChanged: (value) {},
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: Text('إلغاء', style: TextStyle(color: primaryColor)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-            ),
-            child: Text('حفظ', style: TextStyle(color: Colors.white)),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-    );
-  }
+   
 
   String _getStatusText(ComplaintStatus status) {
     switch (status) {
@@ -1588,31 +1507,62 @@ class AnalyticsTab extends StatelessWidget {
     );
   }
 
-  List<PieChartSectionData> _generatePieChartSections(Map<String, double> data) {
-    final List<Color> colors = [
-      primaryColor,
-      secondaryColor,
-      Colors.orange,
-      Colors.green,
-      Colors.red,
-      Colors.purple,
-    ];
+List<PieChartSectionData> _generatePieChartSections(Map<String, double> data) {
+  // خريطة تربط بين حالة الشكوى واللون المناسب
+  final Map<String, Color> statusColors = {
+    'قيد الانتظار': Colors.orange,
+    'قيد المعالجة': Colors.blue,
+    'تم الحل': Colors.green,
+    'مرفوض': Colors.red,
+  };
 
-    return data.entries.map((entry) {
-      final index = data.keys.toList().indexOf(entry.key);
-      return PieChartSectionData(
-        value: entry.value,
-        color: colors[index % colors.length],
-        title: '${entry.value.toInt()}',
-        radius: 20,
-        titleStyle: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      );
-    }).toList();
+  return data.entries.map((entry) {
+    // الحصول على اللون من الخريطة، أو استخدام لون افتراضي إذا لم يوجد
+    final color = statusColors[entry.key] ?? primaryColor;
+    
+    return PieChartSectionData(
+      value: entry.value,
+      color: color,
+      title: '${entry.value.toInt()}',
+      radius: 20,
+      titleStyle: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+      // إضافة تأثيرات بصرية إضافية
+      borderSide: BorderSide(
+        color: color.withOpacity(0.5),
+        width: 2,
+      ),
+      badgeWidget: _buildBadge(entry.key, color),
+    );
+  }).toList();
+}
+
+// دالة مساعدة لعرض أيقونة أو نص في مركز القطاع
+Widget _buildBadge(String status, Color color) {
+  IconData? icon;
+  switch (status) {
+    case 'قيد الانتظار':
+      icon = Icons.access_time;
+      break;
+    case 'قيد المعالجة':
+      icon = Icons.sync;
+      break;
+    case 'تم الحل':
+      icon = Icons.check_circle;
+      break;
+    case 'مرفوض':
+      icon = Icons.block;
+      break;
   }
+
+  return icon != null
+      ? Icon(icon, size: 16, color: Colors.white)
+      : Text(status.substring(0, 1), 
+          style: TextStyle(color: Colors.white));
+}
 
   Widget _buildBarChart(Map<String, double> data, String title) {
     return Card(

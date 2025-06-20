@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:capitaltaxi/helper/map_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
@@ -44,19 +45,20 @@ Duration _position = Duration.zero;
     setState(() => _isPlaying = false);
   });
   }
-  
-Future<void> _fetchTrips() async {
-  try {
-    QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-        .collection('trips')
-        .orderBy('createdAt', descending: true)
-        .get();
 
+  
+  Future<void> _fetchTrips() async {
+  try {
+  FirebaseFirestore.instance
+  .collection('trips')
+  .orderBy('createdAt', descending: true)
+  .snapshots()
+  .listen((querySnapshot) async {
     List<Trip> loadedTrips = [];
-    
+
     for (var doc in querySnapshot.docs) {
       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      
+
       loadedTrips.add(Trip(
         id: doc.id,
         date: _parseDate(data['createdAt']),
@@ -70,7 +72,10 @@ Future<void> _fetchTrips() async {
         destination: data['destination'] ?? 'لا توجد وجهة',
         complaints: await _getTripComplaints(doc.id),
         driverDetails: await _getDriverDetails(data['driver']),
-        audioRecordingUrl: data['audioRecordingUrl'], // أضف هذا
+        audioRecordingUrl: data['audioRecordingUrl'],
+        isActive: ['accepted', 'started', 'inprogress']
+            .contains(data['status']?.toString().toLowerCase()),
+        points: data['points'],
       ));
     }
 
@@ -78,12 +83,13 @@ Future<void> _fetchTrips() async {
       _trips = loadedTrips;
       _isLoading = false;
     });
+  });
+
   } catch (error) {
     print('Error fetching trips: $error');
     setState(() => _isLoading = false);
   }
 }
- 
 // دالة لتحليل المدة الزمنية بجميع الاحتمالات
 Duration _parseDuration(dynamic timeData) {
   if (timeData == null) return Duration.zero;
@@ -181,6 +187,7 @@ Future<Map<String, dynamic>> _getDriverDetails(String? driverId) async {
         'phone': driverData['phone'] ?? 'غير متوفر',
         'status': _translateDriverStatus(driverData['status'] ?? ''),
        'name': driverData['name'] ?? 'غير معروف',
+
       };
       
       // تخزين في الذاكرة المؤقتة
@@ -209,8 +216,8 @@ Future<Map<String, dynamic>> _getDriverDetails(String? driverId) async {
     switch (status) {
       case 'accepted': return 'مقبول';
       case 'Completed': return 'مكتمل';
-      case 'canceled': return 'ملغى';
-      case 'in_progress': return 'قيد التنفيذ';
+      case 'Cancelled': return 'ملغى';
+      case 'InProgress': return 'قيد التنفيذ';
       default: return status;
     }
   }
@@ -333,6 +340,8 @@ Future<void> _loadData() async {
                     SizedBox(height: 20),
                     _buildQuickStats(),
                     SizedBox(height: 20),
+_buildActiveTripsSection(),
+SizedBox(height: 20),
                     Card(
                       elevation: 4,
                       shape: RoundedRectangleBorder(
@@ -623,7 +632,160 @@ Widget _buildQuickStats() {
     int totalSeconds = _trips.fold(0, (sum, trip) => sum + trip.duration.inSeconds);
     return Duration(seconds: totalSeconds ~/ _trips.length);
   }
+Widget _buildActiveTripsSection() {
+  final activeTrips = _trips.where((trip) => trip.isActive).toList();
+  
+  return Card(
+    elevation: 4,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'الرحلات الجارية الآن',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Chip(
+                label: Text('${activeTrips.length} رحلة'),
+                backgroundColor: Colors.blue.withOpacity(0.2),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          activeTrips.isEmpty
+              ? Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.directions_car, size: 50, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text(
+                        'لا توجد رحلات جارية حالياً',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: activeTrips.map((trip) => _buildActiveTripCard(trip)).toList(),
+                ),
+        ],
+      ),
+    ),
+  );
+}
 
+Widget _buildActiveTripCard(Trip trip) {
+  return Card(
+    margin: EdgeInsets.symmetric(vertical: 8),
+    elevation: 2,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'الرحلة #${trip.id.substring(0, 6)}',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'إلى: ${trip.destination}',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+              Chip(
+                label: Text('جارية'),
+                backgroundColor: Colors.orange.withOpacity(0.2),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.person, size: 16, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('السائق: ${trip.driver}'),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.person_outline, size: 16, color: Colors.green),
+              SizedBox(width: 8),
+              Text('الراكب: ${trip.passenger}'),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.timer, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('المدة: ${trip.duration.inMinutes} دقيقة'),
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+          ElevatedButton.icon(
+  icon: Icon(Icons.location_on, size: 18),
+  label: Text('اعرض مسار الرحله'),
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.blue,
+    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  ),
+  onPressed: () {
+    if (trip.points != null && trip.points!.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MapScreen(polylinePoints: trip.points!),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('لا تتوفر بيانات المسار لهذه الرحلة')),
+      );
+    }
+  },
+),
+              OutlinedButton.icon(
+                icon: Icon(Icons.phone, size: 18),
+                label: Text('اتصال'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                onPressed: () {
+                  // إجراء الاتصال
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
   Widget _buildStatCard({
     required IconData icon,
     required Color color,
@@ -957,9 +1119,20 @@ Widget _buildTripDetailsCard() {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
-                          // إجراء طباعة الفاتورة
+                             if (trip.points != null && trip.points!.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MapScreen(polylinePoints: trip.points!),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('لا تتوفر بيانات المسار لهذه الرحلة')),
+      );
+    }
                         },
-                        child: Text('طباعة الفاتورة'),
+                        child: Text("عرض المسار"),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryColor,
                           shape: RoundedRectangleBorder(
@@ -1100,7 +1273,8 @@ Widget _buildDetailRow(String label, String value, Color textColor) {
 }
 
   List<Trip> _filterTrips() {
-    var trips = _trips;
+ 
+  var trips = _trips.where((trip) => !trip.isActive).toList(); // استبعاد الرحلات الجارية
 
     // التصفية حسب نص البحث
     if (_searchQuery.isNotEmpty) {
@@ -1174,8 +1348,10 @@ class Trip {
   final String destination;
   final List<String> complaints;
   final Map<String, dynamic> driverDetails;
-  final String? audioRecordingUrl; // أضف هذا الحقل
-
+  final String? audioRecordingUrl;
+  final bool isActive; // أضف هذا الحقل الجديد
+  final String? points; // إضافة حقل نقاط المسار
+  
   Trip({
     required this.id,
     required this.date,
@@ -1189,10 +1365,11 @@ class Trip {
     required this.destination,
     required this.complaints,
     required this.driverDetails,
-    this.audioRecordingUrl, // أضف هذا
+    this.audioRecordingUrl,
+    this.isActive = false, // قيمة افتراضية
+        this.points,
   });
 }
-
 class WeeklyData {
   final String day;
   final int trips;

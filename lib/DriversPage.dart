@@ -1,23 +1,22 @@
- import 'package:cached_network_image/cached_network_image.dart';
-import 'package:capitaltaxi/test.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io'; // أضف هذا الاستيراد
-import 'package:flutter/foundation.dart'; // لاستخدام kIsWeb
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:capitaltaxi/history_pages/EarningsHistoryPage.dart';
+import 'package:capitaltaxi/history_pages/TripsHistoryPage.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
- 
- 
+
 class DriversPage extends StatefulWidget {
   @override
   _DriversPageState createState() => _DriversPageState();
 }
 
 class _DriversPageState extends State<DriversPage> {
+  double totalDistance = 0;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final supabase = Supabase.instance.client;
   List<DocumentSnapshot> _drivers = [];
   bool _isLoading = true;
   String _searchQuery = '';
@@ -32,18 +31,72 @@ class _DriversPageState extends State<DriversPage> {
   String? _selectedCarType;
   double _minRating = 0;
   double _maxFare = 10.0;
-
+String  driverid ="";
   @override
   void initState() {
     super.initState();
     _fetchDrivers();
+       fetchDriverDistance();
+
   }
+
+Future<void> fetchDriverDistance() async {
+  final distance = await calculateDriverDistance(driverid);
+  setState(() {
+    totalDistance = distance;
+  });
+}
+
+Future<void> _deleteDriver(String driverId) async {
+  try {
+    // Show confirmation dialog
+    bool confirmDelete = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('حذف السائق', style: TextStyle(color: Colors.red)),
+        content: Text('هل أنت متأكد أنك تريد حذف هذا السائق؟ لا يمكن التراجع عن هذا الإجراء.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('إلغاء', style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('حذف', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmDelete == true) {
+      // Delete from Firestore
+      await _firestore.collection('drivers').doc(driverId).delete();
+      
+      // Optionally delete from Supabase storage (documents and profile photo)
+      try {
+        await supabase.storage.from('driver-documents').remove([driverId]);
+      } catch (e) {
+        print('Error deleting driver documents: $e');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم حذف السائق بنجاح'), backgroundColor: Colors.green));
+    }
+  } catch (e) {
+    print('Error deleting driver: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('فشل حذف السائق: ${e.toString()}'), backgroundColor: Colors.red));
+  }
+}
+
 
   void _fetchDrivers() {
     _firestore.collection('drivers').snapshots().listen((snapshot) {
       setState(() {
         _drivers = snapshot.docs;
         _isLoading = false;
+        
       });
     });
   }
@@ -52,7 +105,9 @@ class _DriversPageState extends State<DriversPage> {
     _firestore.collection('drivers').doc(driverId).update({
       'status': newStatus,
       'lastUpdated': FieldValue.serverTimestamp()
+     
     });
+       driverid = driverId ;
   }
 
   void _updateFareSettings(String driverId, double newFare) {
@@ -72,26 +127,26 @@ class _DriversPageState extends State<DriversPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Fare Management', style: TextStyle(color: Colors.orange)),
+        title: Text('إدارة الأسعار', style: TextStyle(color: Colors.blue[800])),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Current Fare Rate: \$${currentFare.toStringAsFixed(2)}/km',
+            Text('سعر الرحلة الحالي: \$${currentFare.toStringAsFixed(2)}/كم',
               style: TextStyle(fontSize: 16)),
             SizedBox(height: 20),
             TextField(
               controller: _fareController,
               decoration: InputDecoration(
-                labelText: 'New Fare Rate',
+                labelText: 'سعر الرحلة الجديد',
                 prefixText: '\$',
-                suffixText: 'per km',
+                suffixText: 'لكل كم',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.numberWithOptions(decimal: true),
             ),
             SizedBox(height: 10),
-            Text('Suggested Rates:',
-              style: TextStyle(color: Colors.grey)),
+            Text('أسعار مقترحة:',
+              style: TextStyle(color: Colors.grey[600])),
             Wrap(
               spacing: 8,
               children: [0.5, 0.8, 1.0, 1.2, 1.5].map((rate) => 
@@ -108,7 +163,7 @@ class _DriversPageState extends State<DriversPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
+            child: Text('إلغاء'),
           ),
           ElevatedButton(
             onPressed: () {
@@ -116,10 +171,10 @@ class _DriversPageState extends State<DriversPage> {
               _updateFareSettings(driver.id, newFare);
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Fare rate updated successfully')));
+                SnackBar(content: Text('تم تحديث سعر الرحلة بنجاح')));
             },
-            child: Text('Update Fare'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: Text('تحديث السعر'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800]),
           ),
         ],
       ),
@@ -133,7 +188,19 @@ class _DriversPageState extends State<DriversPage> {
       final carNumber = data['carNumber']?.toString().toLowerCase() ?? '';
       final status = data['status']?.toString().toLowerCase() ?? '';
       final carType = data['carType']?.toString().toLowerCase() ?? '';
-      final rating = data['rating']?.toDouble() ?? 0.0;
+      
+      final ratingData = data['rating'];
+      double rating;
+      if (ratingData is Map) {
+        final total = ratingData['total'] ?? 0;
+        final count = ratingData['count'] ?? 1;
+        rating = count != 0 ? total / count : 0.0;
+      } else if (ratingData is num) {
+        rating = ratingData.toDouble();
+      } else {
+        rating = 0.0;
+      }
+
       final fareRate = data['fareRate']?.toDouble() ?? 0.0;
       final query = _searchQuery.toLowerCase();
       
@@ -146,17 +213,41 @@ class _DriversPageState extends State<DriversPage> {
       return matchesSearch && matchesFilter && matchesCarType && matchesRating && matchesFare;
     }).toList();
   }
+Future<double> calculateDriverDistance(String driverId) async {
+  final firestore = FirebaseFirestore.instance;
+
+  final tripsSnapshot = await firestore
+      .collection('trips')
+      .where('driver.id', isEqualTo: driverId) // أو 'driverId' لو ده اسم الحقل
+      .get();
+
+  double totalMeters = 0;
+
+  for (var doc in tripsSnapshot.docs) {
+    final distance = doc['distance'];
+    if (distance is int) {
+      totalMeters += distance.toDouble();
+    } else if (distance is double) {
+      totalMeters += distance;
+    } else if (distance is String) {
+      totalMeters += double.tryParse(distance) ?? 0;
+    }
+  }
+
+  return totalMeters / 1000; // تحويل من متر إلى كيلومتر
+}
+
 
   Widget _buildStatusFilterChips() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _buildFilterChip('All', 'all'),
-          _buildFilterChip('Active 🟢', 'active'),
-          _buildFilterChip('Inactive 🔴', 'inactive'),
-          _buildFilterChip('Suspended 🟡', 'suspended'),
-          _buildFilterChip('On Trip 🚕', 'on_trip'),
+          _buildFilterChip('الكل', 'all'),
+          _buildFilterChip('نشط 🟢', 'active'),
+          _buildFilterChip('غير نشط 🔴', 'inactive'),
+          _buildFilterChip('موقوف 🟡', 'suspended'),
+          _buildFilterChip('في رحلة 🚕', 'on_trip'),
         ],
       ),
     );
@@ -171,215 +262,212 @@ class _DriversPageState extends State<DriversPage> {
         onSelected: (selected) {
           setState(() => _selectedFilter = selected ? value : 'all');
         },
-        selectedColor: Colors.orange.withOpacity(0.3),
-        checkmarkColor: Colors.orange,
+        selectedColor: Colors.blue[100],
+        checkmarkColor: Colors.blue[800],
+        labelStyle: TextStyle(color: Colors.black),
       ),
     );
   }
 
+  int getStarRating(dynamic ratingData) {
+    if (ratingData is Map) {
+      final total = ratingData['total'] ?? 0;
+      final count = ratingData['count'] ?? 1;
+      if (count == 0) return 0;
+      return (total / count).round();
+    } else if (ratingData is num) {
+      return ratingData.round();
+    } else {
+      return 0;
+    }
+  }
+
+  String formatRating(dynamic ratingData) {
+    if (ratingData is Map) {
+      final total = ratingData['total'] ?? 0;
+      final count = ratingData['count'] ?? 1;
+      if (count == 0) return '0.0';
+      return (total / count).toStringAsFixed(1);
+    } else if (ratingData is num) {
+      return ratingData.toStringAsFixed(1);
+    } else {
+      return '0.0';
+    }
+  }
+
   void _showDriverDetails(DocumentSnapshot driver) {
-  final data = driver.data() as Map<String, dynamic>;
-  final createdAt = data['createdAt']?.toDate();
-  final lastUpdated = data['lastUpdated']?.toDate();
-  final fareUpdated = data['fareLastUpdated']?.toDate();
-  final documents = data['documents'] as Map<String, dynamic>?;
-  final dateFormat = DateFormat('yyyy-MM-dd HH:mm');
- 
-  
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Color(0xFF2A2A3A),
-    builder: (context) => SingleChildScrollView(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Profile Header Section
-            Center(
-              child: Column(
-                children: [
-                CircleAvatar(
-  radius: 40,
-  child: FutureBuilder<String?>(
-    future: _getDriverProfilePhoto(driver.id),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return CircularProgressIndicator(); // عرض مؤشر تحميل أثناء الانتظار
-      }
-      
-      if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-        return Icon(Icons.person); // عرض أيقونة افتراضية في حالة الخطأ أو عدم وجود صورة
-      }
-      
-      final photoUrl = snapshot.data!;
-      return ClipOval(
-        child: Image.network(
-          photoUrl,
-          fit: BoxFit.cover,
-          width: 80,
-          height: 80,
-          errorBuilder: (context, error, stackTrace) => Icon(Icons.person),
-        ),
-      );
-    },
-  ),
-),
-                  SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) => 
-                      Icon(
-                        index < (data['rating']?.toInt() ?? 0) 
-                          ? Icons.star 
-                          : Icons.star_border,
-                        color: Colors.amber,
-                        size: 20,
-                      )
+    final data = driver.data() as Map<String, dynamic>;
+    final createdAt = data['createdAt']?.toDate();
+    final lastUpdated = data['lastUpdated']?.toDate();
+    final fareUpdated = data['fareLastUpdated']?.toDate();
+    final dateFormat = DateFormat('yyyy-MM-dd HH:mm');
+    final starRating = getStarRating(data['rating']);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (context) => SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Profile Header Section
+              Center(
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 40,
+                      child: FutureBuilder<String?>(
+                        future: _getDriverProfilePhoto(driver.id),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return CircularProgressIndicator();
+                          }
+                          if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+                            return Icon(Icons.person, color: Colors.blue);
+                          }
+                          final photoUrl = snapshot.data!;
+                          return ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: photoUrl,
+                              fit: BoxFit.cover,
+                              width: 80,
+                              height: 80,
+                              errorWidget: (context, url, error) => Icon(Icons.person, color: Colors.blue),
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                    SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (index) => 
+                        Icon(
+                          index < starRating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 20,
+                        )
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SizedBox(height: 16),
-            Center(
-              child: Text(data['name'] ?? 'No Name',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-            ),
-            SizedBox(height: 8),
-            Center(
-              child: Chip(
-                label: Text(data['status']?.toString().toUpperCase() ?? 'UNKNOWN',
-                  style: TextStyle(color: Colors.white)),
-                backgroundColor: _getStatusColor(data['status']),
+              SizedBox(height: 16),
+              Center(
+                child: Text(data['name'] ?? 'لا يوجد اسم',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
               ),
-            ),
-            Divider(color: Colors.grey, height: 32),
-     _buildSectionHeader('DOCUMENTS VERIFICATION'),
-      SizedBox(
-  height: 400, // ارتفاع ثابت لسطح التمرير
+              SizedBox(height: 8),
+              Center(
+                child: Chip(
+                  label: Text(data['status']?.toString().toUpperCase() ?? 'غير معروف',
+                    style: TextStyle(color: Colors.white)),
+                  backgroundColor: _getStatusColor(data['status']),
+                ),
+              ),
+              Divider(color: Colors.grey[300], height: 32),
+              
+        // Documents Section
+_buildSectionHeader('الوثائق والمستندات'),
+SizedBox(
+  height: 400,
   child: FutureBuilder<List<_DriverImage>>(
     future: fetchDriverImages(driver.id),
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting) {
         return Center(child: CircularProgressIndicator());
       }
-      
       if (snapshot.hasError) {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.error, color: Colors.red),
-              Text('Error loading documents'),
+              Text('خطأ في تحميل المستندات'),
             ],
           ),
         );
       }
-      
       final documents = snapshot.data ?? [];
-      
       if (documents.isEmpty) {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.folder_off, color: Colors.grey),
-              Text('No documents found'),
+              Text('لا توجد مستندات'),
             ],
           ),
         );
       }
-      
       return ListView.builder(
-        scrollDirection: Axis.vertical,
-        physics: AlwaysScrollableScrollPhysics(), // يضمن التمرير حتى مع قلة العناصر
         itemCount: documents.length,
         itemBuilder: (context, index) {
           final img = documents[index];
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-            child: Container(
-              height: 200, // ارتفاع كل عنصر مستند
-              decoration: BoxDecoration(
-                color: Color(0xFF3A3A4A),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 6,
-                    offset: Offset(0, 3),
-                  ),
-                ],
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    flex: 2,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.horizontal(left: Radius.circular(16)),
-                      child: img.url.contains('.pdf')
-                          ? Container(
-                              color: Colors.red[900],
-                              child: Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.picture_as_pdf, size: 50, color: Colors.white),
-                                    SizedBox(height: 10),
-                                    Text('PDF Document', style: TextStyle(color: Colors.white)),
-                                  ],
-                                ),
-                              ),
-                            )
-                          : CachedNetworkImage(
-  imageUrl: img.url,
-  fit: BoxFit.cover,
-  placeholder: (context, url) => Center(child: CircularProgressIndicator()),
-  errorWidget: (context, url, error) => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.error, color: Colors.red),
-        Text('Failed to load image'),
-      ],
-    ),
-  ),
-)
-                    ),
-                  ),
-                  Expanded(
-                    flex: 1,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            img.name,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          SizedBox(height: 8),
-                          if (img.url.contains('.pdf'))
-                            ElevatedButton(
-                              onPressed: () => _launchUrl(img.url),
-                              child: Text('Open PDF'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red[800],
-                                padding: EdgeInsets.symmetric(horizontal: 12),
-                              ),
-                            ),
-                        ],
+                  // Document Title
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Text(
+                      img.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black
                       ),
                     ),
+                  ),
+                  // Document Content
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: 300, // الحد الأدنى للارتفاع
+                      maxHeight: 500, // الحد الأقصى للارتفاع
+                    ),
+                    child: img.url.contains('.pdf')
+                        ? Container(
+                            color: Colors.red[100],
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.picture_as_pdf, size: 60, color: Colors.red),
+                                  SizedBox(height: 16),
+                                  Text('ملف PDF', style: TextStyle(color: Colors.red, fontSize: 20)),
+                                  SizedBox(height: 16),
+                                  ElevatedButton(
+                                    onPressed: () => _launchUrl(img.url),
+                                    child: Text('فتح الملف'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red[800],
+                                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : InteractiveViewer(
+                            panEnabled: true,
+                            minScale: 0.5,
+                            maxScale: 3.0,
+                            child: CachedNetworkImage(
+                              imageUrl: img.url,
+                              fit: BoxFit.contain,
+                              placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+                              errorWidget: (context, url, error) => Icon(Icons.error),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -390,103 +478,108 @@ class _DriversPageState extends State<DriversPage> {
     },
   ),
 ),
-Divider(color: Colors.grey, height: 32),
-            // Personal Info Section
-            _buildSectionHeader('PERSONAL INFORMATION'),
-            _buildDetailRow(Icons.email, 'Email', data['email'] ?? '-'),
-            _buildDetailRow(Icons.phone, 'Phone', data['phone'] ?? '-'),
-            _buildDetailRow(Icons.person, 'Username', data['username'] ?? '-'),
-            _buildDetailRow(Icons.calendar_today, 'Member Since', 
-              createdAt != null ? dateFormat.format(createdAt) : '-'),
-            
-            // Vehicle Info Section
-            _buildSectionHeader('VEHICLE INFORMATION'),
-            _buildDetailRow(Icons.directions_car, 'Car Number', data['carNumber'] ?? '-'),
-            _buildDetailRow(Icons.category, 'Car Type', data['carType'] ?? '-'),
-            _buildDetailRow(Icons.model_training, 'Car Model', data['carModel'] ?? '-'),
-            _buildDetailRow(Icons.color_lens, 'Car Color', data['carColor'] ?? '-'),
-            
-            // Fare & Earnings Section
-            _buildSectionHeader('FARE & EARNINGS'),
-            _buildDetailRow(Icons.attach_money, 'Fare Rate', 
-              '\$${data['fareRate']?.toStringAsFixed(2) ?? '0.00'}/km'),
-            _buildDetailRow(Icons.update, 'Last Fare Update', 
-              fareUpdated != null ? dateFormat.format(fareUpdated) : '-'),
-            _buildDetailRow(Icons.monetization_on, 'Total Earnings', 
-              '\$${data['totalEarnings']?.toStringAsFixed(2) ?? '0.00'}'),
-            _buildDetailRow(Icons.account_balance_wallet, 'Wallet Balance', 
-              '\$${data['walletBalance']?.toStringAsFixed(2) ?? '0.00'}'),
-            
-            // Stats Section
-            _buildSectionHeader('STATISTICS'),
-            GridView.count(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              crossAxisCount: 3,
-              childAspectRatio: 1.5,
-              children: [
-                _buildStatCard('Trips', Icons.directions_car, data['totalTrips']?.toString() ?? '0'),
-                _buildStatCard('Rating', Icons.star, data['rating']?.toStringAsFixed(1) ?? '0.0'),
-                _buildStatCard('Hours', Icons.timer, data['totalHours']?.toString() ?? '0'),
-                _buildStatCard('KM', Icons.speed, data['totalKm']?.toString() ?? '0'),
-                _buildStatCard('Cancels', Icons.cancel, data['canceledTrips']?.toString() ?? '0'),
-                _buildStatCard('Complaints', Icons.report, data['complaints']?.toString() ?? '0'),
-              ],
-            ),
-            
-            SizedBox(height: 16),
-            Divider(color: Colors.grey),
-            SizedBox(height: 16),
-            
-            // Actions Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton.icon(
-                  icon: Icon(Icons.attach_money, size: 18),
-                  label: Text('Adjust Fare'),
-                  onPressed: () => _showFareManagementDialog(driver),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20))),
-                ),
-                ElevatedButton.icon(
-                  icon: Icon(
-                    data['status'] == 'active' ? Icons.block : Icons.check_circle,
-                    size: 18
+              Divider(color: Colors.grey[300], height: 32),
+              
+              // Personal Info Section
+              _buildSectionHeader('المعلومات الشخصية'),
+              _buildDetailRow(Icons.email, 'البريد الإلكتروني', data['email'] ?? '-'),
+              _buildDetailRow(Icons.phone, 'الهاتف', data['phone'] ?? '-'),
+              _buildDetailRow(Icons.person, 'اسم المستخدم', data['username'] ?? '-'),
+              _buildDetailRow(Icons.calendar_today, 'تاريخ الانضمام', 
+                createdAt != null ? dateFormat.format(createdAt) : '-'),
+              
+              // Vehicle Info Section
+              _buildSectionHeader('معلومات المركبة'),
+              _buildDetailRow(Icons.directions_car, 'رقم المركبة', data['carNumber'] ?? '-'),
+              _buildDetailRow(Icons.category, 'نوع المركبة', data['carType'] ?? '-'),
+              _buildDetailRow(Icons.model_training, 'موديل المركبة', data['carModel'] ?? '-'),
+              _buildDetailRow(Icons.color_lens, 'لون المركبة', data['carColor'] ?? '-'),
+              
+              // Fare & Earnings Section
+              _buildSectionHeader('الأرباح والتعريفات'),
+              _buildDetailRow(Icons.monetization_on, 'إجمالي الأرباح', 
+                '\$${data['totalEarnings']?.toStringAsFixed(2) ?? '0.00'}'),
+              _buildDetailRow(Icons.account_balance_wallet, 'رصيد المحفظة', 
+                '\$${data['balance']?.toStringAsFixed(2) ?? '0.00'}'),
+              
+              // Stats Section
+              _buildSectionHeader('الإحصائيات'),
+              GridView.count(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                crossAxisCount: 3,
+                childAspectRatio: 1.5,
+                children: [
+                  _buildStatCard('الرحلات', Icons.directions_car, data['trips']?.toString() ?? '0'),
+                  _buildStatCard('التقييم', Icons.star, formatRating(data['rating'])),
+                  _buildStatCard('الساعات', Icons.timer, data['hours']?.toString() ?? '0'),
+ 
+                  _buildStatCard('الإلغاءات', Icons.cancel, data['canceledTrips']?.toString() ?? '0'),
+                  _buildStatCard('الشكاوى', Icons.report, data['complaints']?.toString() ?? '0'),
+                ],
+              ),
+              
+              SizedBox(height: 16),
+              Divider(color: Colors.grey[300]),
+              SizedBox(height: 16),
+              
+              // Actions Section
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.history, size: 18),
+                    label: Text('سجل الرحلات', style: TextStyle(color: Colors.white)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TripsHistoryPage(driverId: data["id"]),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[800],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20))),
                   ),
-                  label: Text(data['status'] == 'active' ? 'Suspend' : 'Activate'),
-                  onPressed: () => _updateDriverStatus(
-                    driver.id, 
-                    data['status'] == 'active' ? 'suspended' : 'active'
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.money, size: 18),
+                    label: Text('الأرباح', style: TextStyle(color: Colors.white)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EarningsHistoryPage(driverId: data["id"]),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[800],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20))),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: data['status'] == 'active' 
-                        ? Colors.amber[800] 
-                        : Colors.green[800],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20))),
-                ),
-              ],
-            ),
-            SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
-          ],
+                ],
+              ),
+              SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
- 
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: EdgeInsets.only(top: 16, bottom: 8),
       child: Text(title, 
         style: TextStyle(
-          color: Colors.orange, 
-          fontSize: 12,
+          color: Colors.blue[800], 
+          fontSize: 14,
           fontWeight: FontWeight.bold,
-          letterSpacing: 1.2
+          letterSpacing: 1.0
         )),
     );
   }
@@ -496,17 +589,17 @@ Divider(color: Colors.grey, height: 32),
       padding: EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, color: Colors.orange, size: 20),
+          Icon(icon, color: Colors.blue[800], size: 20),
           SizedBox(width: 12),
           Expanded(
             flex: 2,
             child: Text('$label:', 
-              style: TextStyle(color: Colors.white70)),
+              style: TextStyle(color: Colors.grey[600])),
           ),
           Expanded(
             flex: 3,
             child: Text(value, 
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500)),
           ),
         ],
       ),
@@ -516,17 +609,17 @@ Divider(color: Colors.grey, height: 32),
   Widget _buildStatCard(String title, IconData icon, String value) {
     return Card(
       margin: EdgeInsets.all(4),
-      color: Colors.grey[850],
+      color: Colors.grey[100],
       child: Padding(
         padding: EdgeInsets.all(8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.orange, size: 20),
+            Icon(icon, color: Colors.blue[800], size: 20),
             SizedBox(height: 4),
-            Text(title, style: TextStyle(color: Colors.white70, fontSize: 10)),
+            Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 10)),
             SizedBox(height: 4),
-            Text(value, style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(value, style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -540,19 +633,26 @@ Divider(color: Colors.grey, height: 32),
       duration: Duration(milliseconds: 300),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color(0xFF2A2A3A),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 6,
+            offset: Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         children: [
           Row(
             children: [
-              Icon(Icons.filter_alt, color: Colors.orange, size: 20),
+              Icon(Icons.filter_alt, color: Colors.blue[800], size: 20),
               SizedBox(width: 8),
-              Text('Advanced Filters', style: TextStyle(color: Colors.white, fontSize: 16)),
+              Text('تصفية متقدمة', style: TextStyle(color: Colors.black, fontSize: 16)),
               Spacer(),
               IconButton(
-                icon: Icon(_showAdvancedFilters ? Icons.expand_less : Icons.expand_more),
+                icon: Icon(_showAdvancedFilters ? Icons.expand_less : Icons.expand_more, color: Colors.blue[800]),
                 onPressed: () => setState(() => _showAdvancedFilters = !_showAdvancedFilters),
               ),
             ],
@@ -560,14 +660,14 @@ Divider(color: Colors.grey, height: 32),
           if (_showAdvancedFilters) ...[
             SizedBox(height: 16),
             _buildFilterDropdown(
-              label: 'Car Type',
+              label: 'نوع المركبة',
               value: _selectedCarType,
-              items: ['All', ...carTypes],
-              onChanged: (value) => setState(() => _selectedCarType = value == 'All' ? null : value),
+              items: ['الكل', ...carTypes],
+              onChanged: (value) => setState(() => _selectedCarType = value == 'الكل' ? null : value),
             ),
             SizedBox(height: 16),
             _buildRangeSlider(
-              label: 'Minimum Rating: ${_minRating.toStringAsFixed(1)}',
+              label: 'أقل تقييم: ${_minRating.toStringAsFixed(1)}',
               value: _minRating,
               max: 5.0,
               divisions: 10,
@@ -575,7 +675,7 @@ Divider(color: Colors.grey, height: 32),
             ),
             SizedBox(height: 16),
             _buildRangeSlider(
-              label: 'Max Fare Rate: \$${_maxFare.toStringAsFixed(2)}/km',
+              label: 'أعلى سعر: \$${_maxFare.toStringAsFixed(2)}/كم',
               value: _maxFare,
               max: 20.0,
               divisions: 40,
@@ -596,28 +696,29 @@ Divider(color: Colors.grey, height: 32),
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: Colors.white70)),
+        Text(label, style: TextStyle(color: Colors.grey[600])),
         SizedBox(height: 8),
         Container(
           padding: EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: Colors.grey[800],
+            color: Colors.grey[100],
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey[300]!),
           ),
           child: DropdownButton<String>(
-            value: value ?? 'All',
+            value: value ?? 'الكل',
             items: items.map((type) => 
               DropdownMenuItem(
                 value: type,
-                child: Text(type, style: TextStyle(color: Colors.white)),
+                child: Text(type, style: TextStyle(color: Colors.black)),
               )
             ).toList(),
             onChanged: onChanged,
             isExpanded: true,
-            dropdownColor: Colors.grey[850],
+            dropdownColor: Colors.white,
             underline: SizedBox(),
-            icon: Icon(Icons.arrow_drop_down, color: Colors.orange),
-            style: TextStyle(color: Colors.white),
+            icon: Icon(Icons.arrow_drop_down, color: Colors.blue[800]),
+            style: TextStyle(color: Colors.black),
           ),
         ),
       ],
@@ -634,14 +735,14 @@ Divider(color: Colors.grey, height: 32),
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: Colors.white70)),
+        Text(label, style: TextStyle(color: Colors.grey[600])),
         Slider(
           value: value,
           min: 0,
           max: max,
           divisions: divisions,
-          activeColor: Colors.orange,
-          inactiveColor: Colors.grey[700],
+          activeColor: Colors.blue[800],
+          inactiveColor: Colors.grey[300],
           label: value.toStringAsFixed(value == max ? 0 : 1),
           onChanged: onChanged,
         ),
@@ -662,28 +763,28 @@ Divider(color: Colors.grey, height: 32),
 
   Color _getStatusColor(String? status) {
     switch (status) {
-      case 'active': return Colors.green.withOpacity(0.5);
-      case 'inactive': return Colors.red.withOpacity(0.5);
-      case 'suspended': return Colors.amber.withOpacity(0.5);
-      case 'on_trip': return Colors.blue.withOpacity(0.5);
-      default: return Colors.grey.withOpacity(0.5);
+      case 'active': return Colors.green;
+      case 'inactive': return Colors.red;
+      case 'suspended': return Colors.amber;
+      case 'on_trip': return Colors.blue;
+      default: return Colors.grey;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFF1E1E2E),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Color(0xFF252537),
-        elevation: 4,
+        backgroundColor: Colors.white,
+        elevation: 1,
         title: Row(
           children: [
-            Icon(Icons.drive_eta, color: Colors.orange),
+            Icon(Icons.drive_eta, color: Colors.blue[800]),
             SizedBox(width: 12),
-            Text("Drivers Management", 
+            Text("إدارة السائقين", 
               style: TextStyle(
-                color: Colors.white,
+                color: Colors.black,
                 fontSize: 20,
                 fontWeight: FontWeight.bold
               )),
@@ -691,14 +792,14 @@ Divider(color: Colors.grey, height: 32),
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh, color: Colors.orange),
+            icon: Icon(Icons.refresh, color: Colors.blue[800]),
             onPressed: _fetchDrivers,
-            tooltip: 'Refresh',
+            tooltip: 'تحديث',
           ),
           IconButton(
-            icon: Icon(Icons.bar_chart, color: Colors.orange),
+            icon: Icon(Icons.bar_chart, color: Colors.blue[800]),
             onPressed: () => _showAnalytics(),
-            tooltip: 'Analytics',
+            tooltip: 'التحليلات',
           ),
         ],
       ),
@@ -710,18 +811,18 @@ Divider(color: Colors.grey, height: 32),
               children: [
                 TextField(
                   decoration: InputDecoration(
-                    hintText: 'Search drivers by name or car number...',
-                    hintStyle: TextStyle(color: Colors.white70),
-                    prefixIcon: Icon(Icons.search, color: Colors.orange),
+                    hintText: 'ابحث بالسائقين بالاسم أو رقم المركبة...',
+                    hintStyle: TextStyle(color: Colors.grey[500]),
+                    prefixIcon: Icon(Icons.search, color: Colors.blue[800]),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: Colors.grey[300]!),
                     ),
                     filled: true,
-                    fillColor: Color(0xFF2A2A3A),
+                    fillColor: Colors.grey[50],
                     contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                   ),
-                  style: TextStyle(color: Colors.white),
+                  style: TextStyle(color: Colors.black),
                   onChanged: (value) => setState(() => _searchQuery = value),
                 ),
                 SizedBox(height: 12),
@@ -733,7 +834,7 @@ Divider(color: Colors.grey, height: 32),
           ),
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: Colors.orange))
+                ? Center(child: CircularProgressIndicator(color: Colors.blue[800]))
                 : _filteredDrivers.isEmpty
                     ? Center(
                         child: Column(
@@ -741,10 +842,10 @@ Divider(color: Colors.grey, height: 32),
                           children: [
                             Icon(Icons.search_off, size: 60, color: Colors.grey),
                             SizedBox(height: 16),
-                            Text('No drivers found', 
-                              style: TextStyle(color: Colors.white, fontSize: 18)),
+                            Text('لا يوجد سائقين', 
+                              style: TextStyle(color: Colors.black, fontSize: 18)),
                             SizedBox(height: 8),
-                            Text('Try adjusting your filters', 
+                            Text('حاول تعديل عوامل التصفية', 
                               style: TextStyle(color: Colors.grey)),
                           ],
                         ),
@@ -752,76 +853,88 @@ Divider(color: Colors.grey, height: 32),
                     : SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: DataTable(
+                                    dataRowHeight: 70, // زيادة ارتفاع الصفوف
+                    headingRowHeight: 60, // زيادة ارتفاع رأس الجدول
                           columnSpacing: 20,
                           columns: [
                             DataColumn(
-                              label: _buildTableHeader('Driver'),
+                              label: _buildTableHeader('السائق'),
                             ),
                             DataColumn(
-                              label: _buildTableHeader('Vehicle'),
+                              label: _buildTableHeader('المركبة'),
                             ),
                             DataColumn(
-                              label: _buildTableHeader('Status'),
+                              label: _buildTableHeader('الحالة'),
                             ),
                             DataColumn(
-                              label: _buildTableHeader('Rating'),
+                              label: _buildTableHeader('التقييم'),
                             ),
+                         
                             DataColumn(
-                              label: _buildTableHeader('Fare Rate'),
+                              label: _buildTableHeader('الأرباح'),
                               numeric: true,
                             ),
                             DataColumn(
-                              label: _buildTableHeader('Earnings'),
-                              numeric: true,
-                            ),
-                            DataColumn(
-                              label: _buildTableHeader('Actions'),
+                              label: _buildTableHeader('إجراءات'),
                             ),
                           ],
                           rows: _filteredDrivers.map((driver) {
                             final data = driver.data() as Map<String, dynamic>;
                             final status = data['status'] ?? 'unknown';
-                            final rating = data['rating']?.toDouble() ?? 0.0;
-                            
+                            final ratingData = data['rating'];
+                            double rating;
+
+                            if (ratingData is Map) {
+                              final total = ratingData['total'] ?? 0;
+                              final count = ratingData['count'] ?? 1;
+                              rating = count != 0 ? total / count : 0.0;
+                            } else if (ratingData is num) {
+                              rating = ratingData.toDouble();
+                            } else {
+                              rating = 0.0;
+                            }
+
                             return DataRow(
                               onSelectChanged: (_) => _showDriverDetails(driver),
                               cells: [
                                 DataCell(
                                   Container(
                                     width: 150,
-                                    child:FutureBuilder<String?>(
-      future: _getDriverProfilePhoto(driver.id),
-      builder: (context, snapshot) {
-        final photoUrl = snapshot.data;
-        return Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundImage: photoUrl != null 
-                  ? NetworkImage(photoUrl) 
-                  : AssetImage('assets/driver_placeholder.png') as ImageProvider,
-              onBackgroundImageError: (e, stack) {
-                print('Error loading profile image: $e');
-              },
-            ),
-                                        SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(data['name'] ?? 'No Name', 
-                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                                              SizedBox(height: 2),
-                                              Text(data['phone'] ?? '-', 
-                                                style: TextStyle(color: Colors.white70, fontSize: 12)),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                          }),
-                                     )     ),
+                                    child: FutureBuilder<String?>(
+                                      future: _getDriverProfilePhoto(driver.id),
+                                      builder: (context, snapshot) {
+                                        final photoUrl = snapshot.data;
+                                        return Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 18,
+                                              backgroundImage: photoUrl != null 
+                                                  ? NetworkImage(photoUrl) 
+                                                  : AssetImage('assets/driver_placeholder.png') as ImageProvider,
+                                              onBackgroundImageError: (e, stack) {
+                                                print('Error loading profile image: $e');
+                                              },
+                                            ),
+                                            SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(data['name'] ?? 'لا يوجد اسم', 
+                                                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500)),
+                                                  SizedBox(height: 2),
+                                                  Text(data['phone'] ?? '-', 
+                                                    style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
                                 DataCell(
                                   Container(
                                     width: 150,
@@ -830,10 +943,10 @@ Divider(color: Colors.grey, height: 32),
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text('${data['carType'] ?? '-'}', 
-                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500)),
                                         SizedBox(height: 2),
                                         Text('${data['carModel'] ?? ''} • ${data['carNumber'] ?? '-'}', 
-                                          style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                          style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                                       ],
                                     ),
                                   ),
@@ -842,8 +955,9 @@ Divider(color: Colors.grey, height: 32),
                                   Container(
                                     padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: _getStatusColor(status),
+                                      color: _getStatusColor(status).withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: _getStatusColor(status)),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -852,7 +966,7 @@ Divider(color: Colors.grey, height: 32),
                                         SizedBox(width: 6),
                                         Text(status.toUpperCase(), 
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: _getStatusColor(status),
                                             fontSize: 12,
                                             fontWeight: FontWeight.bold
                                           )),
@@ -866,67 +980,62 @@ Divider(color: Colors.grey, height: 32),
                                       Icon(Icons.star, color: Colors.amber, size: 16),
                                       SizedBox(width: 4),
                                       Text(rating.toStringAsFixed(1), 
-                                        style: TextStyle(color: Colors.white)),
+                                        style: TextStyle(color: Colors.black)),
                                     ],
                                   ),
                                 ),
-                                DataCell(
-                                  Text('\$${data['fareRate']?.toStringAsFixed(2) ?? '0.00'}', 
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold
-                                    )),
-                                ),
+                             
                                 DataCell(
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text('\$${data['totalEarnings']?.toStringAsFixed(2) ?? '0.00'}', 
-                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                                       SizedBox(height: 2),
-                                      Text('${data['totalTrips'] ?? '0'} trips', 
-                                        style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      Text('${data['trips'] ?? '0'} رحلات', 
+                                        style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                                     ],
                                   ),
                                 ),
-                                DataCell(
-                                  Row(
-                                    children: [
-                                      _buildActionButton(
-                                        icon: Icons.attach_money,
-                                        color: Colors.green,
-                                        tooltip: 'Manage Fare',
-                                        onPressed: () => _showFareManagementDialog(driver),
-                                      ),
-                                      SizedBox(width: 8),
-                                      _buildActionButton(
-                                        icon: Icons.info,
-                                        color: Colors.blue,
-                                        tooltip: 'Details',
-                                        onPressed: () => _showDriverDetails(driver),
-                                      ),
-                                      SizedBox(width: 8),
-                                      _buildActionButton(
-                                        icon: data['status'] == 'active' ? Icons.block : Icons.check_circle,
-                                        color: data['status'] == 'active' ? Colors.amber : Colors.green,
-                                        tooltip: data['status'] == 'active' ? 'Suspend' : 'Activate',
-                                        onPressed: () => _updateDriverStatus(
-                                          driver.id, 
-                                          data['status'] == 'active' ? 'suspended' : 'active'
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                            DataCell(
+  Row(
+    children: [
+      _buildActionButton(
+        icon: Icons.info,
+        color: Colors.blue,
+        tooltip: 'التفاصيل',
+        onPressed: () => _showDriverDetails(driver),
+      ),
+      SizedBox(width: 8),
+      _buildActionButton(
+        icon: data['status'] == 'active' ? Icons.block : Icons.check_circle,
+        color: data['status'] == 'active' ? Colors.amber : Colors.green,
+        tooltip: data['status'] == 'active' ? 'تعليق' : 'تفعيل',
+        onPressed: () => _updateDriverStatus(
+          driver.id, 
+          data['status'] == 'active' ? 'suspended' : 'active'
+        ),
+      ),
+      SizedBox(width: 8),
+      _buildActionButton(
+        icon: Icons.delete,
+        color: Colors.red,
+        tooltip: 'حذف السائق',
+        isDelete: true,
+        onPressed: () => _deleteDriver(driver.id),
+      ),
+    ],
+  ),
+),
                               ],
                             );
                           }).toList(),
                           headingRowColor: MaterialStateProperty.resolveWith<Color>(
-                            (states) => Color(0xFF252537),
+                            (states) => Colors.blue[50]!,
                           ),
                           dataRowColor: MaterialStateProperty.resolveWith<Color>(
-                            (states) => Color(0xFF2A2A3A),
+                            (states) => Colors.white,
                           ),
                           dividerThickness: 0.5,
                           showBottomBorder: true,
@@ -936,13 +1045,7 @@ Divider(color: Colors.grey, height: 32),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addNewDriver(),
-        icon: Icon(Icons.person_add),
-        label: Text('Add Driver'),
-        backgroundColor: Colors.orange,
-        elevation: 4,
-      ),
+   
     );
   }
 
@@ -951,552 +1054,464 @@ Divider(color: Colors.grey, height: 32),
       padding: EdgeInsets.symmetric(vertical: 12),
       child: Text(text, 
         style: TextStyle(
-          color: Colors.orange,
+          color: Colors.blue[800],
           fontWeight: FontWeight.bold,
           fontSize: 14
         )),
     );
   }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color color,
-    required String tooltip,
-    required Function() onPressed,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        shape: BoxShape.circle,
+Widget _buildActionButton({
+  required IconData icon,
+  required Color color,
+  required String tooltip,
+  required Function() onPressed,
+  bool isDelete = false, // Add this parameter
+}) {
+  return Container(
+    width: 44,
+    height: 44,
+    decoration: BoxDecoration(
+      color: isDelete ? Colors.red[100] : color.withOpacity(0.1),
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: isDelete ? Colors.red[300]! : color.withOpacity(0.3),
       ),
-      child: IconButton(
-        icon: Icon(icon, color: color, size: 18),
-        onPressed: onPressed,
-        tooltip: tooltip,
-        padding: EdgeInsets.all(6),
-        constraints: BoxConstraints(),
+    ),
+    child: IconButton(
+      icon: Icon(icon, 
+        color: isDelete ? Colors.red : color, 
+        size: 20),
+      onPressed: onPressed,
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints.tightFor(width: 44, height: 44),
+      splashRadius: 24,
+    ),
+  );
+}
+
+  void _addNewDriver() {
+    // Implementation for adding a new driver
+  }
+
+  void _showAnalytics() {
+    // Calculate analytics data
+    final totalDrivers = _drivers.length;
+    final activeDrivers = _drivers.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'active').length;
+    final onTripDrivers = _drivers.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'on_trip').length;
+    final suspendedDrivers = _drivers.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'suspended').length;
+    
+    // Calculate average rating and fare
+    double totalRating = 0;
+    double totalFare = 0;
+    double totalEarnings = 0;
+    
+    for (var driver in _drivers) {
+      final data = driver.data() as Map<String, dynamic>;
+      final ratingData = data['rating'];
+      double rating;
+
+      if (ratingData is Map) {
+        final total = ratingData['total'] ?? 0;
+        final count = ratingData['count'] ?? 1;
+        rating = count != 0 ? total / count : 0.0;
+      } else if (ratingData is num) {
+        rating = ratingData.toDouble();
+      } else {
+        rating = 0.0;
+      }
+
+      totalRating += rating;
+      totalFare += data['fareRate']?.toDouble() ?? 0;
+      totalEarnings += data['totalEarnings']?.toDouble() ?? 0;
+    }
+    
+    final avgRating = totalDrivers > 0 ? totalRating / totalDrivers : 0;
+    final avgFare = totalDrivers > 0 ? totalFare / totalDrivers : 0;
+    
+    // Get most common car type
+    final carTypeCounts = <String, int>{};
+    for (var driver in _drivers) {
+      final type = (driver.data() as Map<String, dynamic>)['carType']?.toString() ?? 'غير معروف';
+      carTypeCounts[type] = (carTypeCounts[type] ?? 0) + 1;
+    }
+    final mostCommonCarType = carTypeCounts.isNotEmpty 
+        ? carTypeCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key 
+        : 'N/A';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (context) => SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Text('تحليلات السائقين',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[800]
+                  )),
+              ),
+              SizedBox(height: 16),
+              
+              // Summary Cards
+              GridView.count(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                childAspectRatio: 1.5,
+                children: [
+                  _buildAnalyticsCard('إجمالي السائقين', Icons.people, totalDrivers.toString()),
+                  _buildAnalyticsCard('سائقين نشطين', Icons.check_circle, '$activeDrivers (${(activeDrivers/totalDrivers*100).toStringAsFixed(1)}%)'),
+                  _buildAnalyticsCard('في رحلة', Icons.directions_car, onTripDrivers.toString()),
+                  _buildAnalyticsCard('موقوفين', Icons.block, suspendedDrivers.toString()),
+                ],
+              ),
+              
+              SizedBox(height: 16),
+              Divider(color: Colors.grey[300]),
+              SizedBox(height: 16),
+              
+              // Stats Section
+              _buildAnalyticsRow('متوسط التقييم', avgRating.toStringAsFixed(1), Icons.star, Colors.amber),
+      
+              _buildAnalyticsRow('إجمالي الأرباح', '\$${totalEarnings.toStringAsFixed(2)}', Icons.monetization_on, Colors.lightBlue),
+              _buildAnalyticsRow('أكثر نوع مركبة', mostCommonCarType, Icons.directions_car, Colors.deepPurple),
+              
+              SizedBox(height: 16),
+              Divider(color: Colors.grey[300]),
+              SizedBox(height: 16),
+              
+              // Status Distribution Chart
+              Text('توزيع الحالات', 
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold
+                )),
+              SizedBox(height: 8),
+              Container(
+                height: 150,
+                child: _buildStatusChart(
+                  active: activeDrivers,
+                  onTrip: onTripDrivers,
+                  suspended: suspendedDrivers,
+                  inactive: totalDrivers - activeDrivers - onTripDrivers - suspendedDrivers,
+                ),
+              ),
+              
+              SizedBox(height: 16),
+              Divider(color: Colors.grey[300]),
+              SizedBox(height: 16),
+              
+              // Top Performers
+              Text('أعلى السائقين تقييماً', 
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold
+                )),
+              SizedBox(height: 8),
+              Column(
+                children: () {
+                  final sortedDrivers = _drivers.toList()
+                    ..sort((a, b) {
+                      final dataA = a.data() as Map<String, dynamic>;
+                      final dataB = b.data() as Map<String, dynamic>;
+                      final ratingA = extractRating(dataA['rating']);
+                      final ratingB = extractRating(dataB['rating']);
+                      return ratingB.compareTo(ratingA);
+                    });
+
+                  return sortedDrivers
+                    .take(3)
+                    .map(_buildDriverPerformanceTile)
+                    .toList();
+                }(),
+              ),
+              SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  void _addNewDriver() {
-    // Implementation for adding a new driver
-    // (Similar to previous implementation but with additional fare fields)
+  double extractRating(dynamic rating) {
+    if (rating is Map) {
+      final total = rating['total'] ?? 0;
+      final count = rating['count'] ?? 1;
+      if (count == 0) return 0.0;
+      return total / count;
+    } else if (rating is num) {
+      return rating.toDouble();
+    } else {
+      return 0.0;
+    }
   }
 
- void _showAnalytics() {
-  // Calculate analytics data
-  final totalDrivers = _drivers.length;
-  final activeDrivers = _drivers.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'active').length;
-  final onTripDrivers = _drivers.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'on_trip').length;
-  final suspendedDrivers = _drivers.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'suspended').length;
-  
-  // Calculate average rating and fare
-  double totalRating = 0;
-  double totalFare = 0;
-  double totalEarnings = 0;
-  
-  for (var driver in _drivers) {
-    final data = driver.data() as Map<String, dynamic>;
-    totalRating += data['rating']?.toDouble() ?? 0;
-    totalFare += data['fareRate']?.toDouble() ?? 0;
-    totalEarnings += data['totalEarnings']?.toDouble() ?? 0;
-  }
-  
-  final avgRating = totalDrivers > 0 ? totalRating / totalDrivers : 0;
-  final avgFare = totalDrivers > 0 ? totalFare / totalDrivers : 0;
-  
-  // Get most common car type
-  final carTypeCounts = <String, int>{};
-  for (var driver in _drivers) {
-    final type = (driver.data() as Map<String, dynamic>)['carType']?.toString() ?? 'Unknown';
-    carTypeCounts[type] = (carTypeCounts[type] ?? 0) + 1;
-  }
-  final mostCommonCarType = carTypeCounts.isNotEmpty 
-      ? carTypeCounts.entries.reduce((a, b) => a.value > b.value ? a : b).key 
-      : 'N/A';
-
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Color(0xFF2A2A3A),
-    builder: (context) => SingleChildScrollView(
+  Widget _buildAnalyticsCard(String title, IconData icon, String value) {
+    return Card(
+      color: Colors.white,
+      elevation: 2,
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Center(
-              child: Text('Driver Analytics',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange
-                )),
-            ),
-            SizedBox(height: 16),
-            
-            // Summary Cards
-            GridView.count(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              childAspectRatio: 1.5,
+            Row(
               children: [
-                _buildAnalyticsCard('Total Drivers', Icons.people, totalDrivers.toString()),
-                _buildAnalyticsCard('Active Drivers', Icons.check_circle, '$activeDrivers (${(activeDrivers/totalDrivers*100).toStringAsFixed(1)}%)'),
-                _buildAnalyticsCard('On Trip', Icons.directions_car, onTripDrivers.toString()),
-                _buildAnalyticsCard('Suspended', Icons.block, suspendedDrivers.toString()),
+                Icon(icon, color: Colors.blue[800], size: 20),
+                SizedBox(width: 8),
+                Text(title, 
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14
+                  )),
               ],
             ),
-            
-            SizedBox(height: 16),
-            Divider(color: Colors.grey),
-            SizedBox(height: 16),
-            
-            // Stats Section
-            _buildAnalyticsRow('Average Rating', avgRating.toStringAsFixed(1), Icons.star, Colors.amber),
-            _buildAnalyticsRow('Average Fare Rate', '\$${avgFare.toStringAsFixed(2)}/km', Icons.attach_money, Colors.green),
-            _buildAnalyticsRow('Total Earnings', '\$${totalEarnings.toStringAsFixed(2)}', Icons.monetization_on, Colors.lightBlue),
-            _buildAnalyticsRow('Most Common Car Type', mostCommonCarType, Icons.directions_car, Colors.deepPurple),
-            
-            SizedBox(height: 16),
-            Divider(color: Colors.grey),
-            SizedBox(height: 16),
-            
-            // Status Distribution Chart
-            Text('Status Distribution', 
+            SizedBox(height: 8),
+            Text(value,
               style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
+                color: Colors.black,
+                fontSize: 18,
                 fontWeight: FontWeight.bold
               )),
-            SizedBox(height: 8),
-            Container(
-              height: 150,
-              child: _buildStatusChart(
-                active: activeDrivers,
-                onTrip: onTripDrivers,
-                suspended: suspendedDrivers,
-                inactive: totalDrivers - activeDrivers - onTripDrivers - suspendedDrivers,
-              ),
-            ),
-            
-            SizedBox(height: 16),
-            Divider(color: Colors.grey),
-            SizedBox(height: 16),
-            
-            // Top Performers
-            Text('Top Rated Drivers', 
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold
-              )),
-            SizedBox(height: 8),
-Column(
-  children: () {
-    // First create a sorted list
-    final sortedDrivers = _drivers.toList()
-      ..sort((a, b) {
-        final dataA = a.data() as Map<String, dynamic>;
-        final dataB = b.data() as Map<String, dynamic>;
-        final ratingA = (dataA['rating'] as num?)?.toDouble() ?? 0.0;
-        final ratingB = (dataB['rating'] as num?)?.toDouble() ?? 0.0;
-        return ratingB.compareTo(ratingA);
-      });
-    
-    // Then take top 3 and build widgets
-    return sortedDrivers
-      .take(3)
-      .map(_buildDriverPerformanceTile)
-      .toList();
-  }(),
-),
-
-          SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
-        ],
+          ],
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-Widget _buildAnalyticsCard(String title, IconData icon, String value) {
-  return Card(
-    color: Colors.grey[850],
-    child: Padding(
-      padding: EdgeInsets.all(12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildAnalyticsRow(String label, String value, IconData icon, Color iconColor) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, color: Colors.orange, size: 20),
-              SizedBox(width: 8),
-              Text(title, 
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14
-                )),
-            ],
+          Container(
+            padding: EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
           ),
-          SizedBox(height: 8),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(label,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14
+              )),
+          ),
           Text(value,
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
+              color: Colors.black,
+              fontSize: 16,
               fontWeight: FontWeight.bold
             )),
         ],
       ),
-    ),
-  );
-}
+    );
+  }
 
-Widget _buildAnalyticsRow(String label, String value, IconData icon, Color iconColor) {
-  return Padding(
-    padding: EdgeInsets.symmetric(vertical: 8),
-    child: Row(
+  Widget _buildStatusChart({required int active, required int onTrip, required int suspended, required int inactive}) {
+    final total = active + onTrip + suspended + inactive;
+    if (total == 0) return Center(child: Text('لا توجد بيانات متاحة', style: TextStyle(color: Colors.grey)));
+    
+    return Stack(
+      alignment: Alignment.center,
       children: [
-        Container(
-          padding: EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: iconColor.withOpacity(0.2),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: iconColor, size: 20),
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: Text(label,
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14
-            )),
-        ),
-        Text(value,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.bold
-          )),
-      ],
-    ),
-  );
-}
-
-Widget _buildStatusChart({required int active, required int onTrip, required int suspended, required int inactive}) {
-  final total = active + onTrip + suspended + inactive;
-  if (total == 0) return Center(child: Text('No data available', style: TextStyle(color: Colors.white70)));
-  
-  return Stack(
-    alignment: Alignment.center,
-    children: [
-      PieChart(
-        PieChartData(
-          sections: [
-            PieChartSectionData(
-              value: active.toDouble(),
-              color: Colors.green,
-              title: '${(active/total*100).toStringAsFixed(1)}%',
-              radius: 60,
-              titleStyle: TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            PieChartSectionData(
-              value: onTrip.toDouble(),
-              color: Colors.blue,
-              title: '${(onTrip/total*100).toStringAsFixed(1)}%',
-              radius: 60,
-              titleStyle: TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            PieChartSectionData(
-              value: suspended.toDouble(),
-              color: Colors.amber,
-              title: '${(suspended/total*100).toStringAsFixed(1)}%',
-              radius: 60,
-              titleStyle: TextStyle(color: Colors.white, fontSize: 12),
-            ),
-            PieChartSectionData(
-              value: inactive.toDouble(),
-              color: Colors.red,
-              title: '${(inactive/total*100).toStringAsFixed(1)}%',
-              radius: 60,
-              titleStyle: TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ],
-          sectionsSpace: 2,
-          centerSpaceRadius: 40,
-        ),
-      ),
-      Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Total',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 12
-            )),
-          Text(total.toString(),
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold
-            )),
-        ],
-      ),
-    ],
-  );
-}
-
-Widget _buildDriverPerformanceTile(DocumentSnapshot driver) {
-  final data = driver.data() as Map<String, dynamic>;
-  final rating = data['rating']?.toDouble() ?? 0;
-  final trips = data['totalTrips'] ?? 0;
-  
-  return Container(
-    margin: EdgeInsets.only(bottom: 8),
-    decoration: BoxDecoration(
-      color: Colors.grey[850],
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: ListTile(
-      leading: CircleAvatar(
-        radius: 20,
-        backgroundImage: data['photoUrl'] != null 
-            ? NetworkImage(data['photoUrl']) 
-            : AssetImage('assets/driver_placeholder.png') as ImageProvider,
-      ),
-      title: Text(data['name'] ?? 'No Name',
-        style: TextStyle(color: Colors.white)),
-      subtitle: Text('${trips} trips',
-        style: TextStyle(color: Colors.white70, fontSize: 12)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.star, color: Colors.amber, size: 18),
-          SizedBox(width: 4),
-          Text(rating.toStringAsFixed(1),
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold
-            )),
-        ],
-      ),
-    ),
-  );
-}
- 
- Future<List<String>> _getDriverDocuments(String driverId) async {
-  try {
-    final files = await Supabase.instance.client.storage
-        .from('driver-documents')
-        .list(path: driverId);
-    
-    final urls = <String>[];
-    
-    for (var file in files) {
-      final url = await Supabase.instance.client.storage
-          .from('driver-documents')
-          .createSignedUrl('$driverId/${file.name}', 3600);
-      urls.add(url);
-    }
-    
-    return urls;
-  } catch (e) {
-    print('Error getting documents: $e');
-    throw Exception('Failed to load documents');
-  }
-}
-
-void _showFullDocument(String url) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: Colors.transparent,
-      contentPadding: EdgeInsets.zero,
-      content: InteractiveViewer(
-        child: url.contains('.pdf')
-          ? Container(
-              width: MediaQuery.of(context).size.width,
-              height: MediaQuery.of(context).size.height * 0.7,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.picture_as_pdf, size: 60, color: Colors.red),
-                    Text('PDF Document',
-                      style: TextStyle(color: Colors.white, fontSize: 20)),
-                    SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () => _launchUrl(url),
-                      child: Text('Open PDF'),
-                    ),
-                  ],
-                ),
+        PieChart(
+          PieChartData(
+            sections: [
+              PieChartSectionData(
+                value: active.toDouble(),
+                color: Colors.green,
+                title: '${(active/total*100).toStringAsFixed(1)}%',
+                radius: 60,
+                titleStyle: TextStyle(color: Colors.white, fontSize: 12),
               ),
-            )
-          : Image.network(url),
-      ),
-    ),
-  );
-}
-
-Future<void> _launchUrl(String url) async {
-  if (await canLaunchUrl(Uri.parse(url))) {
-    await launchUrl(Uri.parse(url));
-  } else {
-    throw 'Could not launch $url';
-  }
-}
-
-Future<void> _verifyDocuments(String driverId) async {
-  try {
-    await _firestore.collection('drivers').doc(driverId).update({
-      'documentsVerified': true,
-      'verificationDate': FieldValue.serverTimestamp(),
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Documents verified successfully')));
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error verifying documents: $e')));
-  }
-}
-
-Future<void> _rejectDocuments(String driverId) async {
-  try {
-    await _firestore.collection('drivers').doc(driverId).update({
-      'documentsVerified': false,
-      'verificationDate': FieldValue.serverTimestamp(),
-      'rejectionReason': 'Documents not clear',
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Documents rejected')));
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error rejecting documents: $e')));
-  }
-}
- 
-
-Widget _buildVerificationButton({
-  required String label,
-  required IconData icon,
-  required Color color,
-  required bool isActive,
-  required Function() onPressed,
-}) {
-  return ElevatedButton.icon(
-    icon: Icon(icon, size: 18),
-    label: Text(label),
-    onPressed: isActive ? onPressed : null,
-    style: ElevatedButton.styleFrom(
-      backgroundColor: isActive ? color.withOpacity(0.2) : color.withOpacity(0.05),
-      foregroundColor: isActive ? color : color.withOpacity(0.5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    ),
-  );
-}
-
-Widget _buildStatusActionButton({
-  required String label,
-  required Color color,
-  required Function() onPressed,
-  required bool active,
-}) {
-  return Expanded(
-    child: Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4),
-      child: ElevatedButton(
-        onPressed: active ? onPressed : null,
-        child: Text(label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white
-          )),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color.withOpacity(active ? 0.8 : 0.3),
-          padding: EdgeInsets.symmetric(vertical: 8),
+              PieChartSectionData(
+                value: onTrip.toDouble(),
+                color: Colors.blue,
+                title: '${(onTrip/total*100).toStringAsFixed(1)}%',
+                radius: 60,
+                titleStyle: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              PieChartSectionData(
+                value: suspended.toDouble(),
+                color: Colors.amber,
+                title: '${(suspended/total*100).toStringAsFixed(1)}%',
+                radius: 60,
+                titleStyle: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              PieChartSectionData(
+                value: inactive.toDouble(),
+                color: Colors.red,
+                title: '${(inactive/total*100).toStringAsFixed(1)}%',
+                radius: 60,
+                titleStyle: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+            sectionsSpace: 2,
+            centerSpaceRadius: 40,
+          ),
         ),
-      ),
-    ),
-  );
-}
-Future<List<_DriverImage>> fetchDriverImages(String driverId) async {
-  print('Fetching images for driver ID: $driverId'); // Debug
-  try {
-    final files = await supabase.storage
-        .from('driver-documents')
-        .list(path: driverId);
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('الإجمالي',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12
+              )),
+            Text(total.toString(),
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 20,
+                fontWeight: FontWeight.bold
+              )),
+          ],
+        ),
+      ],
+    );
+  }
 
-    print('Found ${files.length} files for driver $driverId'); // Debug
-    
-    final images = <_DriverImage>[];
-    
-    for (var file in files) {
-      try {
-        final url = supabase.storage
-            .from('driver-documents')
-            .getPublicUrl('$driverId/${file.name}');
-        
-        print('Image URL for ${file.name}: $url'); // Debug
-        
-        images.add(_DriverImage(
-          name: _formatFileName(file.name),
-          url: url,
-        ));
-      } catch (e) {
-        print('Error processing file ${file.name}: $e'); // Debug
-      }
+  Widget _buildDriverPerformanceTile(DocumentSnapshot driver) {
+    final data = driver.data() as Map<String, dynamic>;
+    final ratingData = data['rating'];
+    double rating;
+
+    if (ratingData is Map) {
+      final total = ratingData['total'] ?? 0;
+      final count = ratingData['count'] ?? 1;
+      rating = count != 0 ? total / count : 0.0;
+    } else if (ratingData is num) {
+      rating = ratingData.toDouble();
+    } else {
+      rating = 0.0;
     }
 
-    return images;
-  } catch (e) {
-    print('Error in fetchDriverImages: $e'); // Debug
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Failed to load documents')));
-    return [];
+    final trips = data['trips'] ?? 0;
+    
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 20,
+          backgroundImage: data['photoUrl'] != null 
+              ? NetworkImage(data['photoUrl']) 
+              : AssetImage('assets/driver_placeholder.png') as ImageProvider,
+        ),
+        title: Text(data['name'] ?? 'لا يوجد اسم',
+          style: TextStyle(color: Colors.black)),
+        subtitle: Text('$trips رحلات',
+          style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.star, color: Colors.amber, size: 18),
+            SizedBox(width: 4),
+            Text(rating.toStringAsFixed(1),
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold
+              )),
+          ],
+        ),
+      ),
+    );
   }
-}
-Future<String?> _getDriverProfilePhoto(String driverId) async {
-  try {
-    // المسار في Supabase Storage بناءً على الهيكل المذكور
-    final path = '$driverId/profile.jpg'; // أو أي اسم ملف آخر مثل profile.png
-    
-    // الحصول على رابط عام للصورة
-    final url = Supabase.instance.client.storage
-        .from('driver-documents') // نفس ال bucket المستخدم للوثائق
-        .getPublicUrl(path);
-    
-    // التحقق من وجود الملف (اختياري)
-    final files = await Supabase.instance.client.storage
-        .from('driver-documents')
-        .list(path: driverId);
-    
-    final profileExists = files.any((file) => 
-        file.name.toLowerCase().contains('profile'));
-    
-    return profileExists ? url : null;
-  } catch (e) {
-    print('Error getting profile photo: $e');
-    return null;
+
+  Future<List<_DriverImage>> fetchDriverImages(String driverId) async {
+    try {
+      final files = await supabase.storage
+          .from('driver-documents')
+          .list(path: driverId);
+
+      final images = <_DriverImage>[];
+      
+      for (var file in files) {
+        try {
+          final url = supabase.storage
+              .from('driver-documents')
+              .getPublicUrl('$driverId/${file.name}');
+          
+          images.add(_DriverImage(
+            name: _formatFileName(file.name),
+            url: url,
+          ));
+        } catch (e) {
+          print('Error processing file ${file.name}: $e');
+        }
+      }
+
+      return images;
+    } catch (e) {
+      print('Error in fetchDriverImages: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل تحميل المستندات')));
+      return [];
+    }
   }
-}
-String _formatFileName(String filename) {
-  return filename
-      .replaceAll('_', ' ')
-      .replaceAll('-', ' ')
-      .split('.')
-      .first
-      .toUpperCase();
+
+  Future<String?> _getDriverProfilePhoto(String driverId) async {
+    try {
+      final path = '$driverId/profile.jpg';
+      final url = supabase.storage
+          .from('driver-documents')
+          .getPublicUrl(path);
+      
+      final files = await supabase.storage
+          .from('driver-documents')
+          .list(path: driverId);
+      
+      final profileExists = files.any((file) => 
+          file.name.toLowerCase().contains('profile'));
+      
+      return profileExists ? url : null;
+    } catch (e) {
+      print('Error getting profile photo: $e');
+      return null;
+    }
+  }
+
+  String _formatFileName(String filename) {
+    return filename
+        .replaceAll('_', ' ')
+        .replaceAll('-', ' ')
+        .split('.')
+        .first
+        .toUpperCase();
+  }
+
+  Future<void> _launchUrl(String url) async {
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(Uri.parse(url));
+    } else {
+      throw 'Could not launch $url';
+    }
+  }
 }
 
-}
- class _DriverImage {
+class _DriverImage {
   final String name;
   final String url;
 

@@ -19,8 +19,45 @@ class _EmailContactState extends State<EmailContact> {
   final TextEditingController _messageController = TextEditingController();
   String _selectedUserType = 'Driver';
   bool _isSending = false;
+  int _currentTabIndex = 0;
+  String _searchQuery = '';
 
   final List<Map<String, dynamic>> _sentEmails = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Load some dummy data for demonstration
+    _loadSampleData();
+  }
+
+  void _loadSampleData() {
+    setState(() {
+      _sentEmails.addAll([
+        {
+          'email': 'driver1@example.com',
+          'subject': 'New Ride Assignment',
+          'message': 'You have been assigned a new ride from downtown to airport.',
+          'type': 'Driver',
+          'time': DateTime.now().subtract(const Duration(minutes: 30)),
+        },
+        {
+          'email': 'rider1@example.com',
+          'subject': 'Ride Confirmation',
+          'message': 'Your ride has been confirmed. Driver will arrive in 5 minutes.',
+          'type': 'Rider',
+          'time': DateTime.now().subtract(const Duration(hours: 2)),
+        },
+        {
+          'email': 'driver2@example.com',
+          'subject': 'Weekly Performance',
+          'message': 'Your weekly performance report is ready.',
+          'type': 'Driver',
+          'time': DateTime.now().subtract(const Duration(days: 1)),
+        },
+      ]);
+    });
+  }
 
   Future<void> _sendEmail() async {
     if (!_formKey.currentState!.validate()) return;
@@ -84,9 +121,10 @@ class _EmailContactState extends State<EmailContact> {
         title: const Text('Ride Messaging Dashboard'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications),
-            onPressed: () {},
+            icon: const Icon(Icons.search),
+            onPressed: () => _showSearchDialog(),
           ),
+          const SizedBox(width: 8),
           const CircleAvatar(
             backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/41.jpg'),
           ),
@@ -97,147 +135,202 @@ class _EmailContactState extends State<EmailContact> {
     );
   }
 
+  void _showSearchDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Search Messages'),
+        content: TextField(
+          onChanged: (value) => setState(() => _searchQuery = value),
+          decoration: const InputDecoration(
+            hintText: 'Search by email, subject or message',
+            prefixIcon: Icon(Icons.search),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() => _searchQuery = '');
+              Navigator.pop(context);
+            },
+            child: const Text('Clear'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDashboard() {
+    final filteredEmails = _sentEmails.where((email) {
+      final query = _searchQuery.toLowerCase();
+      return email['email'].toLowerCase().contains(query) ||
+          email['subject'].toLowerCase().contains(query) ||
+          email['message'].toLowerCase().contains(query);
+    }).toList();
+
+    final driverEmails = filteredEmails.where((e) => e['type'] == 'Driver').toList();
+    final riderEmails = filteredEmails.where((e) => e['type'] == 'Rider').toList();
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildUserTypeTabs(),
+          const SizedBox(height: 16),
+          _buildStatsCards(driverEmails.length, riderEmails.length),
+          const SizedBox(height: 16),
+          _buildMessageComposer(),
+          const SizedBox(height: 24),
+          _currentTabIndex == 0
+              ? _buildMessageList(driverEmails, 'Driver Messages')
+              : _buildMessageList(riderEmails, 'Rider Messages'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserTypeTabs() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
           children: [
-            Text(
-              'Dashboard Overview',
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentTabIndex = 0),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _currentTabIndex == 0 
+                        ? Colors.blue.withOpacity(0.2) 
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.directions_car, 
+                          color: _currentTabIndex == 0 ? Colors.blue : Colors.grey),
+                      const SizedBox(width: 8),
+                      Text('Drivers', 
+                          style: TextStyle(
+                            fontWeight: _currentTabIndex == 0 
+                                ? FontWeight.bold 
+                                : FontWeight.normal,
+                            color: _currentTabIndex == 0 ? Colors.blue : Colors.grey,
+                          )),
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 24),
-            _buildStatsRow(),
-            const SizedBox(height: 32),
-            _buildMessageCard(),
-            const SizedBox(height: 32),
-            _buildRecentMessages(),
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentTabIndex = 1),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _currentTabIndex == 1 
+                        ? Colors.green.withOpacity(0.2) 
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.person, 
+                          color: _currentTabIndex == 1 ? Colors.green : Colors.grey),
+                      const SizedBox(width: 8),
+                      Text('Riders', 
+                          style: TextStyle(
+                            fontWeight: _currentTabIndex == 1 
+                                ? FontWeight.bold 
+                                : FontWeight.normal,
+                            color: _currentTabIndex == 1 ? Colors.green : Colors.grey,
+                          )),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _buildStatsCards(int driverCount, int riderCount) {
     return Row(
       children: [
-        _buildStatCard('Total Messages Sent', '1,245', Icons.email, Colors.blueAccent),
-        const SizedBox(width: 16),
-        _buildStatCard('Drivers', '356', Icons.directions_car, Colors.greenAccent),
-        const SizedBox(width: 16),
-        _buildStatCard('Riders', '892', Icons.person, Colors.orangeAccent),
-        const SizedBox(width: 16),
-        _buildStatCard('Open Rate', '78%', Icons.trending_up, Colors.purpleAccent),
+        Expanded(
+          child: _buildStatCard(
+            title: 'Total Drivers',
+            value: driverCount.toString(),
+            icon: Icons.directions_car,
+            color: Colors.blue,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            title: 'Total Riders',
+            value: riderCount.toString(),
+            icon: Icons.person,
+            color: Colors.green,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            title: 'Messages Sent',
+            value: _sentEmails.length.toString(),
+            icon: Icons.email,
+            color: Colors.purple,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildMessageCard() {
+  Widget _buildStatCard({required String title, required String value, required IconData icon, required Color color}) {
     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Quick Message',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: TextFormField(
-  controller: _emailController,
-  decoration: const InputDecoration(
-    labelText: 'Email',
-    border: OutlineInputBorder(),
-    prefixIcon: Icon(Icons.email),
-    hintText: 'example@domain.com',
-  ),
-  validator: (value) {
-    if (value == null || value.isEmpty) {
-      return 'Email is required';
-    }
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-      return 'Enter a valid email address';
-    }
-    return null;
-  },
-  keyboardType: TextInputType.emailAddress,
-),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                  ),
                 ),
-                const SizedBox(width: 16),
-                DropdownButton<String>(
-                  value: _selectedUserType,
-                  items: ['Driver', 'Rider']
-                      .map((type) => DropdownMenuItem(
-                            value: type,
-                            child: Text(type),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedUserType = value!;
-                    });
-                  },
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 20),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _subjectController,
-              decoration: const InputDecoration(
-                labelText: 'Subject',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.subject),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Subject is required';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _messageController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Message',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Message is required';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton.icon(
-                onPressed: _isSending ? null : _sendEmail,
-                icon: _isSending 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Icon(Icons.send),
-                label: Text(_isSending ? 'Sending...' : 'Send Message'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: color,
               ),
             ),
           ],
@@ -246,55 +339,262 @@ class _EmailContactState extends State<EmailContact> {
     );
   }
 
-  Widget _buildRecentMessages() {
+  Widget _buildMessageComposer() {
     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Compose New Message',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _emailController,
+                      decoration: InputDecoration(
+                        labelText: 'Recipient Email',
+                        border: const OutlineInputBorder(),
+                        prefixIcon: const Icon(Icons.email),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.contacts),
+                          onPressed: () => _showContactPicker(),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Email is required';
+                        }
+                        if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+                          return 'Enter a valid email address';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: DropdownButton<String>(
+                      value: _selectedUserType,
+                      underline: const SizedBox(),
+                      items: ['Driver', 'Rider']
+                          .map((type) => DropdownMenuItem(
+                                value: type,
+                                child: Text(type),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedUserType = value!;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _subjectController,
+                decoration: const InputDecoration(
+                  labelText: 'Subject',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.subject),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Subject is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _messageController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Message',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Message is required';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton.icon(
+                  onPressed: _isSending ? null : _sendEmail,
+                  icon: _isSending 
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send, size: 18),
+                  label: Text(_isSending ? 'Sending...' : 'Send Message'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    backgroundColor: _selectedUserType == 'Driver' 
+                        ? Colors.blue 
+                        : Colors.green,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showContactPicker() {
+    // In a real app, this would show a list of contacts from your database
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Contact'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: 5, // Sample contacts
+            itemBuilder: (context, index) {
+              final email = _currentTabIndex == 0 
+                  ? 'driver${index+1}@example.com'
+                  : 'rider${index+1}@example.com';
+              return ListTile(
+                leading: Icon(
+                  _currentTabIndex == 0 ? Icons.directions_car : Icons.person,
+                  color: _currentTabIndex == 0 ? Colors.blue : Colors.green,
+                ),
+                title: Text(email),
+                onTap: () {
+                  setState(() {
+                    _emailController.text = email;
+                  });
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageList(List<Map<String, dynamic>> emails, String title) {
+    return Card(
+      elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Recent Messages',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Total: ${emails.length}',
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
-            if (_sentEmails.isEmpty)
-              const Center(child: Text('No messages sent yet'))
+            if (emails.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    'No messages found',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
             else
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _sentEmails.length,
+                itemCount: emails.length,
                 itemBuilder: (context, index) {
-                  final email = _sentEmails[index];
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: email['type'] == 'Driver'
-                          ? Colors.blue[100]
-                          : Colors.green[100],
-                      child: Icon(
-                        email['type'] == 'Driver'
-                            ? Icons.directions_car
-                            : Icons.person,
-                        color: email['type'] == 'Driver'
-                            ? Colors.blue
-                            : Colors.green,
+                  final email = emails[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    elevation: 1,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: email['type'] == 'Driver'
+                            ? Colors.blue[100]
+                            : Colors.green[100],
+                        child: Icon(
+                          email['type'] == 'Driver'
+                              ? Icons.directions_car
+                              : Icons.person,
+                          color: email['type'] == 'Driver'
+                              ? Colors.blue
+                              : Colors.green,
+                        ),
                       ),
+                      title: Text(
+                        email['subject'],
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('To: ${email['email']}'),
+                          const SizedBox(height: 4),
+                          Text(
+                            email['message'],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            DateFormat('MMM d').format(email['time']),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            DateFormat('h:mm a').format(email['time']),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      onTap: () => _showMessageDetails(email),
                     ),
-                    title: Text(email['subject']),
-                    subtitle: Text(
-                        'To: ${email['email']}\n${email['message'].toString().substring(0, email['message'].toString().length > 30 ? 30 : email['message'].toString().length)}...'),
-                    trailing: Text(
-                      DateFormat('MMM d, h:mm a').format(email['time']),
-                    ),
-                    onTap: () {
-                      // Show details
-                    },
                   );
                 },
               ),
@@ -304,84 +604,91 @@ class _EmailContactState extends State<EmailContact> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+  void _showMessageDetails(Map<String, dynamic> email) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(email['subject']),
+        content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: color),
-                  ),
-                ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  email['type'] == 'Driver' 
+                      ? Icons.directions_car 
+                      : Icons.person,
+                  color: email['type'] == 'Driver' ? Colors.blue : Colors.green,
+                ),
+                title: Text('Recipient: ${email['email']}'),
+                subtitle: Text('Type: ${email['type']}'),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Message:',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
+              Text(email['message']),
+              const SizedBox(height: 16),
               Text(
-                value,
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+                'Sent on: ${DateFormat.yMMMd().add_jm().format(email['time'])}',
+                style: const TextStyle(color: Colors.grey),
               ),
             ],
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
-}class EmailService with ChangeNotifier {
-  static const String _serviceId = 'Capital Taxi';
-  static const String _templateId = 'template_2brn8uy'; // تأكد من أن هذا هو ID الصحيح
-  static const String _userId = 'aSu9wQM4Aap0ML7Sd';
-  static const String _emailJsUrl = 'https://api.emailjs.com/api/v1.0/email/send';
+}
+
+class EmailService with ChangeNotifier {
+  static const String _brevoApiKey = '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';
+  static const String _brevoApiUrl = 'https://api.brevo.com/v3/smtp/email';
 
   Future<Map<String, dynamic>> sendEmail(
-      String toEmail, String subject, String message, String userType) async {
+    String toEmail, 
+    String subject, 
+    String message, 
+    String userType,
+  ) async {
     try {
-      // تحقق إضافي من صحة الإيميل
-      if (toEmail.isEmpty || !toEmail.contains('@')) {
-        return {'status': 'error', 'message': 'Invalid recipient email'};
-      }
-
       final response = await http.post(
-        Uri.parse(_emailJsUrl),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse(_brevoApiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': _brevoApiKey,
+        },
         body: json.encode({
-          'service_id': _serviceId,
-          'template_id': _templateId,
-          'user_id': _userId,
-          'template_params': {
-            'to_email': toEmail,
-            'subject': subject,
-            'message': message,
-            'user_type': userType,
-            'name': 'User', // إضافة حقل name المطلوب في القالب
-            'email': toEmail, // إضافة حقل email المطلوب في القالب
-          }
+          'sender': {
+            'name': 'Capital Taxi',
+            'email': 'wwwahmedahmid88@gmail.com',
+          },
+          'to': [
+            {'email': toEmail}
+          ],
+          'subject': subject,
+          'htmlContent': '''
+            <html>
+              <body>
+                <p><strong>User Type:</strong> $userType</p>
+                <p>$message</p>
+              </body>
+            </html>
+          ''',
         }),
       );
 
-      if (response.statusCode == 200) {
-        return {'status': 'success', 'message': 'Email sent successfully'};
+      if (response.statusCode == 201) {
+        return {'status': 'success', 'message': 'Email sent successfully via Brevo'};
       } else {
         return {
           'status': 'error',
